@@ -183,8 +183,11 @@ and expression_desc =
         (** let P1 = E1 and ... and Pn = EN in E       (flag = Nonrecursive)
             let rec P1 = E1 and ... and Pn = EN in E   (flag = Recursive)
          *)
-  | Texp_function of { arg_label : arg_label; param : Ident.t;
-      cases : value case list; partial : partial; }
+  | Texp_function of {
+      params: function_param list;
+      body: function_body;
+    }
+  (* CR nroberts: comment *)
         (** [Pexp_fun] and [Pexp_function] both translate to [Texp_function].
             See {!Parsetree} for more details.
 
@@ -293,6 +296,32 @@ and 'k case =
      c_guard: expression option;
      c_rhs: expression;
     }
+
+and function_param =
+  {
+    fp_arg_label: arg_label;
+    fp_param: Ident.t;
+    fp_partial: partial;
+    fp_kind: function_param_kind;
+    fp_loc: Location.t;
+  }
+
+(**  - [Param_pat p] is a non-optional argument with pattern [p].
+     - [Param_optional_default (p, e)] is an optional argument
+       [p] with default value [e], i.e. [?x:(p = e)]. If the parameter
+       is of type [a option]; the pattern and expression are of type [a].
+*)
+and function_param_kind =
+  | Param_pat of pattern
+  | Param_optional_default of pattern * expression
+
+(** The function body binds a final argument in [Tfunction_cases],
+    and this argument is pattern-matched against the cases.
+*)
+and function_body =
+  | Tfunction_body of expression
+  | Tfunction_cases of
+      { cases: value case list; partial: partial; param: Ident.t }
 
 and record_label_definition =
   | Kept of Types.type_expr * mutable_flag

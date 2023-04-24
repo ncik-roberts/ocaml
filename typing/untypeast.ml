@@ -13,7 +13,6 @@
 (*                                                                        *)
 (**************************************************************************)
 
-open Longident
 open Asttypes
 open Parsetree
 open Ast_helper
@@ -105,12 +104,13 @@ let rec lident_of_path = function
 
 let map_loc sub {loc; txt} = {loc = sub.location sub loc; txt}
 
-(** Try a name [$name$0], check if it's free, if not, increment and repeat. *)
-let fresh_name s env =
-  let name i = s ^ Int.to_string i in
-  let available i = not (Env.bound_value (name i) env) in
-  let first_i = Misc.find_first_mono available in
-  name first_i
+(* CR nroberts: why delete? *)
+(* (** Try a name [$name$0], check if it's free, if not, increment and repeat. *)
+ * let fresh_name s env =
+ *   let name i = s ^ Int.to_string i in
+ *   let available i = not (Env.bound_value (name i) env) in
+ *   let first_i = Misc.find_first_mono available in
+ *   name first_i *)
 
 (** Extract the [n] patterns from the case of a letop *)
 let rec extract_letop_patterns n pat =
@@ -408,21 +408,46 @@ let expression sub exp =
           List.map (sub.value_binding sub) list,
           sub.expr sub exp)
 
-    (* Pexp_function can't have a label, so we split in 3 cases. *)
-    (* One case, no guard: It's a fun. *)
-    | Texp_function { arg_label; cases = [{c_lhs=p; c_guard=None; c_rhs=e}];
-          _ } ->
-        Pexp_fun (arg_label, None, sub.pat sub p, sub.expr sub e)
-    (* No label: it's a function. *)
-    | Texp_function { arg_label = Nolabel; cases; _; } ->
-        Pexp_function (List.map (sub.case sub) cases)
-    (* Mix of both, we generate `fun ~label:$name$ -> match $name$ with ...` *)
-    | Texp_function { arg_label = Labelled s | Optional s as label; cases;
-          _ } ->
-        let name = fresh_name s exp.exp_env in
-        Pexp_fun (label, None, Pat.var ~loc {loc;txt = name },
-          Exp.match_ ~loc (Exp.ident ~loc {loc;txt= Lident name})
-                          (List.map (sub.case sub) cases))
+    | Texp_function { params; body } ->
+        let params =
+          List.map
+            (fun fp ->
+               let default_exp, pat =
+                 match fp.fp_kind with
+                 | Param_pat pat -> None, pat
+                 | Param_optional_default (pat, expr) -> Some expr, pat
+               in
+               let pat = sub.pat sub pat in
+               let default_exp = Option.map (sub.expr sub) default_exp in
+               fp.fp_arg_label, default_exp, pat)
+            params
+        in
+        let add_ghost_loc desc =
+          Exp.mk desc ~loc:{ loc with loc_ghost = true }
+        in
+        let body =
+          match body with
+          | Tfunction_body body -> sub.expr sub body
+          | Tfunction_cases { cases } ->
+              (* If the Pexp_function was in the source program, this ghost
+                 location is dropped (as [params] will be empty for any
+                 [function] in the source program).
+              *)
+              add_ghost_loc (Pexp_function (List.map (sub.case sub) cases))
+        in
+        let expr =
+          List.fold_right
+            (fun (arg_label, default_exp, pat) acc ->
+               (* The only times these ghost locations are NOT dropped are
+                  when there are more [params] than appeared in the source
+                  program (i.e. typechecking or translation added them).
+               *)
+              add_ghost_loc (Pexp_fun (arg_label, default_exp, pat, acc)))
+            params
+            body
+        in
+        (* Drop location; it's populated in the postlude. *)
+        expr.pexp_desc
     | Texp_apply (exp, list) ->
         Pexp_apply (sub.expr sub exp,
           List.fold_right (fun (label, expo) list ->
@@ -815,9 +840,27 @@ let object_field sub {of_loc; of_desc; of_attributes;} =
   Of.mk ~loc ~attrs desc
 
 and is_self_pat = function
-  | { pat_desc = Tpat_alias(_pat, id, _) } ->
-      string_is_prefix "self-" (Ident.name id)
+  | { pat_desc = Tpat_alias(_, _pat, id) } ->
+      string_is_prefix "self-" id.txt
   | _ -> false
+
+let remove_fun_self exp =
+  match exp with
+  | { exp_desc =
+        Texp_function
+          { params = ({ fp_kind = Param_pat pat;
+                        fp_arg_label = Nolabel}
+                      :: params);
+            body = Tfunction_body body;
+          }
+    }
+    when is_self_pat pat ->
+    (match params with
+     | [] -> body
+     | _ :: _ ->
+        { exp with
+            exp_desc = Texp_function { params; body = Tfunction_body body } })
+  | e -> e
 
 let class_field sub cf =
   let loc = sub.location sub cf.cf_loc in
@@ -835,21 +878,9 @@ let class_field sub cf =
     | Tcf_method (lab, priv, Tcfk_virtual cty) ->
         Pcf_method (lab, priv, Cfk_virtual (sub.typ sub cty))
     | Tcf_method (lab, priv, Tcfk_concrete (o, exp)) ->
-        let remove_fun_self = function
-          | { exp_desc =
-              Texp_function { arg_label = Nolabel; cases = [case]; _ } }
-            when is_self_pat case.c_lhs && case.c_guard = None -> case.c_rhs
-          | e -> e
-        in
         let exp = remove_fun_self exp in
         Pcf_method (lab, priv, Cfk_concrete (o, sub.expr sub exp))
     | Tcf_initializer exp ->
-        let remove_fun_self = function
-          | { exp_desc =
-              Texp_function { arg_label = Nolabel; cases = [case]; _ } }
-            when is_self_pat case.c_lhs && case.c_guard = None -> case.c_rhs
-          | e -> e
-        in
         let exp = remove_fun_self exp in
         Pcf_initializer (sub.expr sub exp)
     | Tcf_attribute x -> Pcf_attribute x

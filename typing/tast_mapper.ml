@@ -72,6 +72,8 @@ type mapper =
     with_constraint: mapper -> with_constraint -> with_constraint;
   }
 
+type 'k case_mapper = mapper -> 'k case -> 'k case
+
 let id x = x
 let tuple2 f1 f2 (x, y) = (f1 x, f2 y)
 let tuple3 f1 f2 f3 (x, y, z) = (f1 x, f2 y, f3 z)
@@ -302,6 +304,30 @@ let pat
   let pat_attributes = sub.attributes sub x.pat_attributes in
   {x with pat_loc; pat_extra; pat_desc; pat_env; pat_attributes}
 
+let function_param sub fp =
+  let fp_kind =
+    match fp.fp_kind with
+    | Param_pat pat -> Param_pat (sub.pat sub pat)
+    | Param_optional_default (pat, expr) ->
+      let pat = sub.pat sub pat in
+      let expr = sub.expr sub expr in
+      Param_optional_default (pat, expr)
+  in
+  { fp_kind;
+    fp_param = fp.fp_param;
+    fp_arg_label = fp.fp_arg_label;
+    fp_partial = fp.fp_partial;
+    fp_loc = fp.fp_loc;
+  }
+
+let function_body sub body =
+  match body with
+  | Tfunction_body body ->
+      Tfunction_body (sub.expr sub body)
+  | Tfunction_cases { cases; partial; param } ->
+      let cases = List.map (sub.case sub) cases in
+      Tfunction_cases { cases; partial; param }
+
 let expr sub x =
   let extra = function
     | Texp_constraint cty ->
@@ -322,9 +348,10 @@ let expr sub x =
     | Texp_let (rec_flag, list, exp) ->
         let (rec_flag, list) = sub.value_bindings sub (rec_flag, list) in
         Texp_let (rec_flag, list, sub.expr sub exp)
-    | Texp_function { arg_label; param; cases; partial; } ->
-        let cases = List.map (sub.case sub) cases in
-        Texp_function { arg_label; param; cases; partial; }
+    | Texp_function { params; body; } ->
+        let params = List.map (function_param sub) params in
+        let body = function_body sub body in
+        Texp_function { params; body; }
     | Texp_apply (exp, list) ->
         Texp_apply (
           sub.expr sub exp,

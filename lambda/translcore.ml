@@ -81,74 +81,6 @@ let extract_float = function
     Const_base(Const_float f) -> f
   | _ -> fatal_error "Translcore.extract_float"
 
-(* Push the default values under the functional abstractions *)
-
-let wrap_bindings bindings exp =
-  List.fold_left
-    (fun exp binds ->
-      {exp with exp_desc = Texp_let(Nonrecursive, binds, exp)})
-    exp bindings
-
-let rec trivial_pat pat =
-  match pat.pat_desc with
-    Tpat_var _
-  | Tpat_any -> true
-  | Tpat_alias (p, _, _) ->
-      trivial_pat p
-  | Tpat_construct (_, cd, [], _) ->
-      not cd.cstr_generalized && cd.cstr_consts = 1 && cd.cstr_nonconsts = 0
-  | Tpat_tuple patl ->
-      List.for_all trivial_pat patl
-  | _ -> false
-
-let rec push_defaults loc bindings use_lhs cases partial =
-  match cases with
-    [{c_lhs=pat; c_guard=None;
-      c_rhs={exp_desc = Texp_function { arg_label; param; cases; partial; } }
-        as exp}] when bindings = [] || trivial_pat pat ->
-      let cases = push_defaults exp.exp_loc bindings false cases partial in
-      [{c_lhs=pat; c_guard=None;
-        c_rhs={exp with exp_desc = Texp_function { arg_label; param; cases;
-          partial; }}}]
-  | [{c_lhs=pat; c_guard=None;
-      c_rhs={exp_attributes=[{Parsetree.attr_name = {txt="#default"};_}];
-             exp_desc = Texp_let
-               (Nonrecursive, binds,
-                ({exp_desc = Texp_function _} as e2))}}] ->
-      push_defaults loc (binds :: bindings) true
-                   [{c_lhs=pat;c_guard=None;c_rhs=e2}]
-                   partial
-  | [{c_lhs=pat; c_guard=None; c_rhs=exp} as case]
-    when use_lhs || trivial_pat pat && exp.exp_desc <> Texp_unreachable ->
-      [{case with c_rhs = wrap_bindings bindings exp}]
-  | {c_lhs=pat; c_rhs=exp; c_guard=_} :: _ when bindings <> [] ->
-      let param = Typecore.name_cases "param" cases in
-      let desc =
-        {val_type = pat.pat_type; val_kind = Val_reg;
-         val_attributes = []; Types.val_loc = Location.none;
-         val_uid = Types.Uid.internal_not_actually_unique; }
-      in
-      let env = Env.add_value param desc exp.exp_env in
-      let name = Ident.name param in
-      let exp =
-        let cases =
-          let pure_case ({c_lhs; _} as case) =
-            {case with c_lhs = as_computation_pattern c_lhs} in
-          List.map pure_case cases in
-        { exp with exp_loc = loc; exp_env = env; exp_desc =
-          Texp_match
-            ({exp with exp_type = pat.pat_type; exp_env = env; exp_desc =
-              Texp_ident
-                (Path.Pident param, mknoloc (Longident.Lident name), desc)},
-             cases, partial) }
-      in
-      [{c_lhs = {pat with pat_desc = Tpat_var (param, mknoloc name)};
-        c_guard = None; c_rhs= wrap_bindings bindings exp}]
-  | _ ->
-      cases
-
-let push_defaults loc = push_defaults loc [] false
-
 (* Insertion of debugging events *)
 
 let event_before ~scopes exp lam =
@@ -242,12 +174,12 @@ and transl_exp0 ~in_new_scope ~scopes e =
   | Texp_let(rec_flag, pat_expr_list, body) ->
       transl_let ~scopes rec_flag pat_expr_list
         (event_before ~scopes body (transl_exp ~scopes body))
-  | Texp_function { arg_label = _; param; cases; partial; } ->
+  | Texp_function { params; body } ->
       let scopes =
         if in_new_scope then scopes
         else enter_anonymous_function ~scopes
       in
-      transl_function ~scopes e param cases partial
+      transl_function ~scopes e params body
   | Texp_apply({ exp_desc = Texp_ident(path, _, {val_kind = Val_prim p});
                 exp_type = prim_type } as funct, oargs)
     when List.length oargs >= p.prim_arity
@@ -738,59 +670,42 @@ and transl_apply ~scopes
                                 sargs)
      : Lambda.lambda)
 
-and transl_curried_function
-      ~scopes loc return
-      repr partial (param:Ident.t) cases =
-  let max_arity = Lambda.max_arity () in
-  let rec loop ~scopes loc return ~arity partial (param:Ident.t) cases =
-    match cases with
-      [{c_lhs=pat; c_guard=None;
-        c_rhs={exp_desc =
-                 Texp_function
-                   { arg_label = _; param = param'; cases = cases';
-                     partial = partial'; }; exp_env; exp_type;exp_loc}}]
-      when arity <  max_arity ->
-      if  Parmatch.inactive ~partial pat
-      then
-        let kind = value_kind pat.pat_env pat.pat_type in
-        let return_kind = function_return_value_kind exp_env exp_type in
-        let ((_, params, return), body) =
-          loop ~scopes exp_loc return_kind ~arity:(arity + 1)
-            partial' param' cases'
-        in
-        ((Curried, (param, kind) :: params, return),
-         Matching.for_function ~scopes loc None (Lvar param)
-           [pat, body] partial)
-      else begin
-        begin match partial with
-        | Total ->
-          Location.prerr_warning pat.pat_loc
-            Match_on_mutable_state_prevent_uncurry
-        | Partial -> ()
-        end;
-        transl_tupled_function ~scopes ~arity
-          loc return repr partial param cases
-      end
-    | cases ->
-      transl_tupled_function ~scopes ~arity
-        loc return repr partial param cases
+and transl_tupled_function ~scopes loc repr params body =
+  (* CR nroberts: the old code would successfully do the tuple translation if
+     the *first* case was a tuple pattern. But currently we translate function
+     cases into a match in the body, so that doesn't work.
+  *)
+  (* CR nroberts: max arity *)
+  let return =
+    match body with
+    | Tfunction_body body ->
+        value_kind body.exp_env body.exp_type
+    | Tfunction_cases { cases = { c_rhs } :: _ } ->
+        value_kind c_rhs.exp_env c_rhs.exp_type
+    | Tfunction_cases { cases = [] } ->
+        (* With Camlp4, a pattern matching might be empty *)
+        Pgenval
   in
-  loop ~scopes loc return ~arity:1 partial param cases
-
-and transl_tupled_function
-      ~scopes ~arity loc return
-      repr partial (param:Ident.t) cases =
-  match cases with
-  | {c_lhs={pat_desc = Tpat_tuple pl}} :: _
+  (* Cases are eligible if they belong to the only param. *)
+  let eligible_cases =
+    match params, body with
+    | [], Tfunction_cases { cases; partial } ->
+        Some (cases, partial)
+    | [ { fp_kind = Param_pat pat; fp_partial } ], Tfunction_body body ->
+      let case = { c_lhs = pat; c_guard = None; c_rhs = body } in
+      Some ([ case ], fp_partial)
+    | _ -> None
+  in
+  match eligible_cases with
+  | Some (({ c_lhs = { pat_desc = Tpat_tuple pl } } :: _) as cases, partial)
     when !Clflags.native_code
-      && arity = 1
       && List.length pl <= (Lambda.max_arity ()) ->
       begin try
         let size = List.length pl in
         let pats_expr_list =
           List.map
             (fun {c_lhs; c_guard; c_rhs} ->
-              (Matching.flatten_pattern size c_lhs, c_guard, c_rhs))
+               (Matching.flatten_pattern size c_lhs, c_guard, c_rhs))
             cases in
         let kinds =
           (* All the patterns might not share the same types. We must take the
@@ -798,16 +713,16 @@ and transl_tupled_function
           match pats_expr_list with
           | [] -> assert false
           | (pats, _, _) :: cases ->
-              let first_case_kinds =
-                List.map (fun pat -> value_kind pat.pat_env pat.pat_type) pats
-              in
-              List.fold_left
-                (fun kinds (pats, _, _) ->
-                   List.map2 (fun kind pat ->
-                       value_kind_union kind
-                         (value_kind pat.pat_env pat.pat_type))
-                     kinds pats)
-                first_case_kinds cases
+            let first_case_kinds =
+              List.map (fun pat -> value_kind pat.pat_env pat.pat_type) pats
+            in
+            List.fold_left
+              (fun kinds (pats, _, _) ->
+                 List.map2 (fun kind pat ->
+                   value_kind_union kind
+                     (value_kind pat.pat_env pat.pat_type))
+                   kinds pats)
+              first_case_kinds cases
         in
         let tparams =
           List.map (fun kind -> Ident.create_local "param", kind) kinds
@@ -817,38 +732,90 @@ and transl_tupled_function
          Matching.for_tupled_function ~scopes loc params
            (transl_tupled_cases ~scopes pats_expr_list) partial)
     with Matching.Cannot_flatten ->
-      transl_function0 ~scopes loc return repr partial param cases
+      transl_function0 ~scopes loc return repr params body
       end
-  | _ -> transl_function0 ~scopes loc return repr partial param cases
+  | _ -> transl_function0 ~scopes loc return repr params body
 
-and transl_function0
-      ~scopes loc return
-      repr partial (param:Ident.t) cases =
-    let kind =
-      match cases with
-      | [] ->
-        (* With Camlp4, a pattern matching might be empty *)
-        Pgenval
-      | {c_lhs=pat} :: other_cases ->
-        (* All the patterns might not share the same types. We must take the
-           union of the patterns types *)
-        List.fold_left (fun k {c_lhs=pat} ->
-          Typeopt.value_kind_union k
-            (value_kind pat.pat_env pat.pat_type))
-          (value_kind pat.pat_env pat.pat_type) other_cases
-    in
-    ((Curried, [param, kind], return),
-     Matching.for_function ~scopes loc repr (Lvar param)
-       (transl_cases ~scopes cases) partial)
+and transl_function0 ~scopes loc return repr params body =
+  let last_param, body =
+    match body with
+    | Tfunction_body body ->
+      None, event_before ~scopes body (transl_exp ~scopes body)
+    | Tfunction_cases { cases; partial; param } ->
+      let kind =
+        match cases with
+        | [] ->
+          (* With Camlp4, a pattern matching might be empty *)
+          Pgenval
+        | {c_lhs=pat} :: other_cases ->
+          (* All the patterns might not share the same types. We must take the
+             union of the patterns types *)
+          List.fold_left (fun k {c_lhs=pat} ->
+            Typeopt.value_kind_union k
+              (value_kind pat.pat_env pat.pat_type))
+            (value_kind pat.pat_env pat.pat_type) other_cases
+      in
+      let last_param = Some (param, kind) in
+      let body =
+        Matching.for_function ~scopes loc repr (Lvar param)
+          (transl_cases ~scopes cases) partial
+      in
+      last_param, body
+  in
+  let body, params =
+    List.fold_right (fun fp (body, params) ->
+      let param = fp.fp_param in
+      match fp.fp_kind with
+      | Param_pat pat ->
+        let kind = value_kind pat.pat_env pat.pat_type in
+        let body =
+          Matching.for_function ~scopes loc None (Lvar param)
+            [ pat, body ]
+            fp.fp_partial
+        in
+        body, (param, kind) :: params
+      | Param_optional_default (pat, expr) ->
+        let option_param = Ident.create_local "*opt*" in
+        (* Wrap the body in:
 
-and transl_function ~scopes e param cases partial =
+           let $pat =
+              match option_param with
+              | Some x -> x
+              | None -> $exp
+           in
+           ...
+        *)
+        let supplied_or_default =
+          let is_nonzero =
+            if !Clflags.native_code then
+              Lprim (Pintcomp Cne,
+                    [Lvar option_param; Lconst (Const_base (Const_int 0))],
+                    Loc_unknown)
+            else
+              Lvar option_param
+          in
+          Lifthenelse
+            (is_nonzero,
+             Lprim (Pfield (0, Pointer, Immutable),
+                    [ Lvar option_param ],
+                    Loc_unknown),
+             event_before ~scopes expr (transl_exp ~scopes expr))
+        in
+        let body =
+          Matching.for_let ~scopes loc supplied_or_default pat body
+        in
+        (* The optional param is Pgenval as it's an option. *)
+        body, (option_param, Pgenval) :: params)
+    params
+    (body, Option.to_list last_param)
+  in
+  ((Curried, params, return), body)
+
+and transl_function ~scopes e params body =
   let ((kind, params, return), body) =
     event_function ~scopes e
       (function repr ->
-         let pl = push_defaults e.exp_loc cases partial in
-         let return_kind = function_return_value_kind e.exp_env e.exp_type in
-         transl_curried_function ~scopes e.exp_loc return_kind
-           repr partial param pl)
+         transl_tupled_function ~scopes e.exp_loc repr params body)
   in
   let attr = default_function_attribute in
   let loc = of_location ~scopes e.exp_loc in
@@ -1161,12 +1128,11 @@ and transl_letop ~scopes loc env let_ ands param case partial =
   in
   let exp = loop (transl_exp ~scopes let_.bop_exp) ands in
   let func =
-    let return_kind = value_kind case.c_rhs.exp_env case.c_rhs.exp_type in
     let (kind, params, return), body =
       event_function ~scopes case.c_rhs
         (function repr ->
-           transl_curried_function ~scopes case.c_rhs.exp_loc return_kind
-             repr partial param [case])
+           transl_tupled_function ~scopes case.c_rhs.exp_loc repr []
+             (Tfunction_cases { cases = [case]; param; partial }))
     in
     let attr = default_function_attribute in
     let loc = of_location ~scopes case.c_rhs.exp_loc in

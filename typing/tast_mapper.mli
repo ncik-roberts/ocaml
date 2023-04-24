@@ -18,12 +18,15 @@ open Typedtree
 
 (** {1 A generic Typedtree mapper} *)
 
+type 'k case_mapper
+
 type mapper =
   {
     attribute : mapper -> attribute -> attribute;
     attributes : mapper -> attributes -> attributes;
     binding_op: mapper -> binding_op -> binding_op;
-    case: 'k . mapper -> 'k case -> 'k case;
+    (* CR nroberts: remove *)
+    case: 'k . 'k case_mapper;
     class_declaration: mapper -> class_declaration -> class_declaration;
     class_description: mapper -> class_description -> class_description;
     class_expr: mapper -> class_expr -> class_expr;

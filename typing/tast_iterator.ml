@@ -64,6 +64,8 @@ type iterator =
     with_constraint: iterator -> with_constraint -> unit;
   }
 
+type 'k case_fun = iterator -> 'k case -> unit
+
 let iter_snd f (_, y) = f y
 let iter_loc sub {loc; _} = sub.location sub loc
 
@@ -249,6 +251,20 @@ let pat
       sub.pat sub p1;
       sub.pat sub p2
 
+let function_param sub fp =
+  match fp.fp_kind with
+  | Param_pat pat -> sub.pat sub pat
+  | Param_optional_default (pat, expr) ->
+      sub.pat sub pat;
+      sub.expr sub expr
+
+let function_body sub body =
+  match body with
+  | Tfunction_body body ->
+      sub.expr sub body
+  | Tfunction_cases { cases; _ } ->
+      List.iter (sub.case sub) cases
+
 let expr sub {exp_loc; exp_extra; exp_desc; exp_env; exp_attributes; _} =
   let extra = function
     | Texp_constraint cty -> sub.typ sub cty
@@ -268,8 +284,9 @@ let expr sub {exp_loc; exp_extra; exp_desc; exp_env; exp_attributes; _} =
   | Texp_let (rec_flag, list, exp) ->
       sub.value_bindings sub (rec_flag, list);
       sub.expr sub exp
-  | Texp_function {cases; _} ->
-     List.iter (sub.case sub) cases
+  | Texp_function {params; body} ->
+      List.iter (function_param sub) params;
+      function_body sub body
   | Texp_apply (exp, list) ->
       sub.expr sub exp;
       List.iter (fun (_, o) -> Option.iter (sub.expr sub) o) list

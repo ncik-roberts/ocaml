@@ -20,12 +20,16 @@ Allows the implementation of typed tree inspection using open recursion
 open Asttypes
 open Typedtree
 
+type 'k case_fun
+
 type iterator =
   {
     attribute: iterator -> attribute -> unit;
     attributes: iterator -> attributes -> unit;
     binding_op: iterator -> binding_op -> unit;
-    case: 'k . iterator -> 'k case -> unit;
+    (* CR nroberts: put back in *)
+    (* case: 'k . iterator -> 'k case -> unit; *)
+    case: 'k . 'k case_fun;
     class_declaration: iterator -> class_declaration -> unit;
     class_description: iterator -> class_description -> unit;
     class_expr: iterator -> class_expr -> unit;

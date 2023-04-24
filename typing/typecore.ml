@@ -3163,48 +3163,14 @@ and type_expect_
         exp_type = body.exp_type;
         exp_attributes = sexp.pexp_attributes;
         exp_env = env }
-  | Pexp_fun (l, Some default, spat, sbody) ->
-      assert(is_optional l); (* default allowed only with optional argument *)
-      let open Ast_helper in
-      let default_loc = default.pexp_loc in
-      let scases = [
-        Exp.case
-          (Pat.construct ~loc:default_loc
-             (mknoloc (Longident.(Ldot (Lident "*predef*", "Some"))))
-             (Some ([], Pat.var ~loc:default_loc (mknoloc "*sth*"))))
-          (Exp.ident ~loc:default_loc (mknoloc (Longident.Lident "*sth*")));
-
-        Exp.case
-          (Pat.construct ~loc:default_loc
-             (mknoloc (Longident.(Ldot (Lident "*predef*", "None"))))
-             None)
-          default;
-       ]
-      in
-      let sloc =
-        { Location.loc_start = spat.ppat_loc.Location.loc_start;
-          loc_end = default_loc.Location.loc_end;
-          loc_ghost = true }
-      in
-      let smatch =
-        Exp.match_ ~loc:sloc
-          (Exp.ident ~loc (mknoloc (Longident.Lident "*opt*")))
-          scases
-      in
-      let pat = Pat.var ~loc:sloc (mknoloc "*opt*") in
-      let body =
-        Exp.let_ ~loc Nonrecursive
-          ~attrs:[Attr.mk (mknoloc "#default") (PStr [])]
-          [Vb.mk spat smatch] sbody
-      in
-      type_function ?in_function loc sexp.pexp_attributes env
-                    ty_expected_explained l [Exp.case pat body]
-  | Pexp_fun (l, None, spat, sbody) ->
+  | Pexp_fun (l, default_arg, spat, sbody) ->
       type_function ?in_function loc sexp.pexp_attributes env
                     ty_expected_explained l [Ast_helper.Exp.case spat sbody]
+                    ~default_arg
   | Pexp_function caselist ->
       type_function ?in_function
         loc sexp.pexp_attributes env ty_expected_explained Nolabel caselist
+        ~default_arg:None
   | Pexp_apply(sfunct, sargs) ->
       assert (sargs <> []);
       let rec lower_args seen ty_fun =
@@ -4174,14 +4140,18 @@ and type_binding_op_ident env s =
   path, desc
 
 and type_function ?(in_function : (Location.t * type_expr) option)
-    loc attrs env ty_expected_explained arg_label caselist =
+    loc attrs env ty_expected_explained arg_label caselist ~default_arg =
   let { ty = ty_expected; explanation } = ty_expected_explained in
   let (loc_fun, ty_fun) =
     match in_function with Some p -> p
     | None -> (loc, instance ty_expected)
   in
   let separate = !Clflags.principal || Env.has_local_constraints env in
-  let ty_arg, ty_res =
+  (* [ty_arg] and [ty_arg_pattern] are different only for optional arguments
+     with default values. Here [ty_arg_pattern] is the non-optional type
+     bound by the pattern, and [ty_arg] is the optional type visible to callers.
+  *)
+  let (ty_arg, ty_arg_pattern), ty_res =
     with_local_level_iter_if separate ~post:generalize_structure begin fun () ->
       let (ty_arg, ty_res) =
         try filter_arrow env (instance ty_expected) arg_label
@@ -4199,22 +4169,35 @@ and type_function ?(in_function : (Location.t * type_expr) option)
           in
           raise (Error(loc_fun, env, err))
       in
-      let ty_arg =
+      let ty_arg, ty_arg_pattern =
         if is_optional arg_label then
           let tv = newvar() in
           begin
             try unify env ty_arg (type_option tv)
             with Unify _ -> assert false
           end;
-          type_option tv
-        else ty_arg
+          let tv_option = type_option tv in
+          match default_arg with
+          | Some _ -> tv_option, tv
+          | None -> tv_option, tv_option
+        else ty_arg, ty_arg
       in
-      ((ty_arg, ty_res), [ty_arg; ty_res])
+      (* Checking [ty_arg] for scope escape removes the need to check
+         [ty_arg_pattern], which is always a subtree of [ty_arg]. *)
+      (((ty_arg, ty_arg_pattern), ty_res), [ty_arg; ty_res])
     end
+  in
+  (* Only optional parameters can have default arguments. *)
+  let default_arg =
+    match default_arg with
+    | Some default_arg ->
+      assert (is_optional arg_label);
+      Some (type_expect env default_arg (mk_expected ty_arg_pattern))
+    | None -> None
   in
   let cases, partial =
     type_cases Value ~in_function:(loc_fun,ty_fun) env
-      ty_arg (mk_expected ty_res) true loc caselist in
+      ty_arg_pattern (mk_expected ty_res) true loc caselist in
   let not_nolabel_function ty =
     let ls, tvar = list_labels env ty in
     List.for_all ((<>) Nolabel) ls && not tvar
@@ -4223,8 +4206,30 @@ and type_function ?(in_function : (Location.t * type_expr) option)
     Location.prerr_warning (List.hd cases).c_lhs.pat_loc
       Warnings.Unerasable_optional_argument;
   let param = name_cases "param" cases in
+  let params, body =
+    match cases with
+    | [ { c_lhs = pat; c_guard = None; c_rhs = body } ] ->
+        let kind =
+          match default_arg with
+          | None -> Param_pat pat
+          | Some expr -> Param_optional_default (pat, expr)
+        in
+        let param =
+          { fp_kind = kind;
+            fp_arg_label = arg_label;
+            fp_param = param;
+            fp_partial = partial;
+            fp_loc = loc;
+          }
+        in
+        [ param ], Tfunction_body body
+    | _ ->
+        assert (default_arg = None);
+        assert (arg_label = Nolabel);
+        [], Tfunction_cases { cases; partial; param }
+  in
   re {
-    exp_desc = Texp_function { arg_label; param; cases; partial; };
+    exp_desc = Texp_function { params; body; };
     exp_loc = loc; exp_extra = [];
     exp_type =
       instance (newgenty (Tarrow(arg_label, ty_arg, ty_res, commu_ok)));
@@ -4660,9 +4665,14 @@ and type_argument ?explanation ?recarg env sarg ty_expected' ty_expected =
         in
         let cases = [case eta_pat e] in
         let param = name_cases "param" cases in
-        { texp with exp_type = ty_fun; exp_desc =
-          Texp_function { arg_label = Nolabel; param; cases;
-            partial = Total; } }
+        { texp with
+            exp_type = ty_fun;
+            exp_desc =
+              Texp_function
+                { params = [];
+                  body = Tfunction_cases { cases; partial = Total; param };
+                }
+        }
       in
       Location.prerr_warning texp.exp_loc
         (Warnings.Eliminated_optional_arguments

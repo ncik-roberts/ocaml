@@ -774,7 +774,8 @@ let rec expression : Typedtree.expression -> term_judg =
         path pth << Dereference;
         list field fields << Dereference;
       ]
-    | Texp_function { cases } ->
+    | Texp_function { params; body } ->
+      (* CR nroberts: comment *)
       (*
          (Gi; _ |- pi -> ei : m[Delay])^i
          --------------------------------------
@@ -784,8 +785,36 @@ let rec expression : Typedtree.expression -> term_judg =
          is bound locally, so the pattern modes do not influence
          the final environment.
       *)
-      let case_env c m = fst (case c m) in
-      list case_env cases << Delay
+      let patterns =
+        List.map
+          (fun param ->
+            match param.fp_kind with
+            | Param_pat pat -> pat
+            | Param_optional_default (pat, _) -> pat)
+          params
+      in
+      let defaults =
+        List.filter_map
+          (fun param ->
+             match param.fp_kind with
+             | Param_optional_default (_, expr) -> Some expr
+             | Param_pat _ -> None)
+          params
+      in
+      let body =
+        match body with
+        | Tfunction_body body ->
+            expression body
+        | Tfunction_cases { cases; _ } ->
+            List.map (fun c mode -> fst (case c mode)) cases
+            |> join
+      in
+      let f =
+        join (body :: List.map expression defaults) << Delay
+      in
+      (fun m ->
+         let env = f m in
+         remove_patlist patterns env)
     | Texp_lazy e ->
       (*
         G |- e: m[Delay]
