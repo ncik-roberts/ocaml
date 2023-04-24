@@ -3754,6 +3754,18 @@ let for_tupled_function ~scopes loc paraml pats_act_list partial =
       (Context.start (List.length paraml)) pm
   )
 
+let for_optional_arg_default ~scopes loc pat ~default_arg body =
+  let option_param = Ident.create_local "*option*" in
+  let supplied_or_default =
+    Lifthenelse
+      (SArg.make_is_nonzero (Lvar option_param),
+       Lprim (Pfield (0, Pointer, Immutable),
+               [ Lvar option_param ],
+               Loc_unknown),
+       default_arg)
+  in
+  Matching.for_let ~scopes loc supplied_or_default pat body
+
 let flatten_pattern size p =
   match p.pat_desc with
   | Tpat_tuple args -> args

@@ -81,6 +81,67 @@ let extract_float = function
     Const_base(Const_float f) -> f
   | _ -> fatal_error "Translcore.extract_float"
 
+(* Push the default values under the functional abstractions *)
+
+let wrap_bindings bindings exp =
+  List.fold_left
+    (fun exp binds ->
+      {exp with exp_desc = Texp_let(Nonrecursive, binds, exp)})
+    exp bindings
+
+let rec trivial_pat pat =
+  match pat.pat_desc with
+    Tpat_var _
+  | Tpat_any -> true
+  | Tpat_alias (p, _, _) ->
+      trivial_pat p
+  | Tpat_construct (_, cd, [], _) ->
+      not cd.cstr_generalized && cd.cstr_consts = 1 && cd.cstr_nonconsts = 0
+  | Tpat_tuple patl ->
+      List.for_all trivial_pat patl
+  | _ -> false
+
+let trivial_pat_in_param param =
+  match param.fp_kind with
+  | Param_pat pat -> trivial_pat pat
+  | Param_optional_default (pat, _default_arg) -> trivial_pat pat
+
+let rec push_params expr ~rev_pushed_params =
+  match expr with
+  | { exp_desc = Texp_function { params = child_params; body = child_body };
+      exp_extra = [];
+      exp_attributes = [];
+    } ->
+    let is_trivial = List.for_all trivial_pat_in_param child_params in
+    begin match is_trivial, child_body with
+    | true, Tfunction_body child_body ->
+      let rev_pushed_params = List.rev_append child_params rev_pushed_params in
+      begin match push_params child_body ~rev_pushed_params with
+      | None ->
+        let parent_params = List.rev rev_pushed_params in
+        Some (child_body, parent_params)
+      | Some _ as fn -> fn
+      end
+    | false, _ | _, Tfunction_cases _ ->
+      let parent_params = List.rev rev_pushed_params in
+      let parent_body =
+        { expr with
+          exp_desc = Texp_function { params = child_params; body = child_body }
+        }
+      in
+      Some (parent_body, parent_params)
+    end
+  | _ -> None
+
+let push_params body params =
+  match body with
+  | Tfunction_body expr ->
+    begin match push_params expr ~rev_pushed_params:(List.rev params) with
+    | None -> body, params
+    | Some (body, params) -> Tfunction_body body, params
+    end
+  | Tfunction_cases _ -> body, params
+
 (* Insertion of debugging events *)
 
 let event_before ~scopes exp lam =
@@ -670,12 +731,46 @@ and transl_apply ~scopes
                                 sargs)
      : Lambda.lambda)
 
-and transl_tupled_function ~scopes loc repr params body =
-  (* CR nroberts: the old code would successfully do the tuple translation if
-     the *first* case was a tuple pattern. But currently we translate function
-     cases into a match in the body, so that doesn't work.
-  *)
-  (* CR nroberts: max arity *)
+and transl_curried_function
+      ~scopes loc return
+      repr partial (param:Ident.t) cases =
+  let max_arity = Lambda.max_arity () in
+  let rec loop ~scopes loc return ~arity partial (param:Ident.t) cases =
+    match cases with
+      [{c_lhs=pat; c_guard=None;
+        c_rhs={exp_desc =
+                 Texp_function
+                   { arg_label = _; param = param'; cases = cases';
+                     partial = partial'; }; exp_env; exp_type;exp_loc}}]
+      when arity <  max_arity ->
+      if  Parmatch.inactive ~partial pat
+      then
+        let kind = value_kind pat.pat_env pat.pat_type in
+        let return_kind = function_return_value_kind exp_env exp_type in
+        let ((_, params, return), body) =
+          loop ~scopes exp_loc return_kind ~arity:(arity + 1)
+            partial' param' cases'
+        in
+        ((Curried, (param, kind) :: params, return),
+         Matching.for_function ~scopes loc None (Lvar param)
+           [pat, body] partial)
+      else begin
+        begin match partial with
+        | Total ->
+          Location.prerr_warning pat.pat_loc
+            Match_on_mutable_state_prevent_uncurry
+        | Partial -> ()
+        end;
+        transl_tupled_function ~scopes ~arity
+          loc return repr partial param cases
+      end
+    | cases ->
+      transl_tupled_function ~scopes ~arity
+        loc return repr partial param cases
+  in
+  loop ~scopes loc return ~arity:1 partial param cases
+
+and transl_tupled_function ~scopes ~arity loc repr params body =
   let return =
     match body with
     | Tfunction_body body ->
@@ -699,13 +794,14 @@ and transl_tupled_function ~scopes loc repr params body =
   match eligible_cases with
   | Some (({ c_lhs = { pat_desc = Tpat_tuple pl } } :: _) as cases, partial)
     when !Clflags.native_code
+      && arity = 1
       && List.length pl <= (Lambda.max_arity ()) ->
       begin try
         let size = List.length pl in
         let pats_expr_list =
           List.map
             (fun {c_lhs; c_guard; c_rhs} ->
-               (Matching.flatten_pattern size c_lhs, c_guard, c_rhs))
+              (Matching.flatten_pattern size c_lhs, c_guard, c_rhs))
             cases in
         let kinds =
           (* All the patterns might not share the same types. We must take the
@@ -713,16 +809,16 @@ and transl_tupled_function ~scopes loc repr params body =
           match pats_expr_list with
           | [] -> assert false
           | (pats, _, _) :: cases ->
-            let first_case_kinds =
-              List.map (fun pat -> value_kind pat.pat_env pat.pat_type) pats
-            in
-            List.fold_left
-              (fun kinds (pats, _, _) ->
-                 List.map2 (fun kind pat ->
-                   value_kind_union kind
-                     (value_kind pat.pat_env pat.pat_type))
-                   kinds pats)
-              first_case_kinds cases
+              let first_case_kinds =
+                List.map (fun pat -> value_kind pat.pat_env pat.pat_type) pats
+              in
+              List.fold_left
+                (fun kinds (pats, _, _) ->
+                  List.map2 (fun kind pat ->
+                    value_kind_union kind
+                      (value_kind pat.pat_env pat.pat_type))
+                    kinds pats)
+                first_case_kinds cases
         in
         let tparams =
           List.map (fun kind -> Ident.create_local "param", kind) kinds
@@ -774,35 +870,13 @@ and transl_function0 ~scopes loc return repr params body =
             fp.fp_partial
         in
         body, (param, kind) :: params
-      | Param_optional_default (pat, expr) ->
+      | Param_optional_default (pat, default_arg) ->
         let option_param = Ident.create_local "*opt*" in
-        (* Wrap the body in:
-
-           let $pat =
-              match option_param with
-              | Some x -> x
-              | None -> $exp
-           in
-           ...
-        *)
-        let supplied_or_default =
-          let is_nonzero =
-            if !Clflags.native_code then
-              Lprim (Pintcomp Cne,
-                    [Lvar option_param; Lconst (Const_base (Const_int 0))],
-                    Loc_unknown)
-            else
-              Lvar option_param
-          in
-          Lifthenelse
-            (is_nonzero,
-             Lprim (Pfield (0, Pointer, Immutable),
-                    [ Lvar option_param ],
-                    Loc_unknown),
-             event_before ~scopes expr (transl_exp ~scopes expr))
+        let default_arg =
+          event_before ~scopes default_arg (transl_exp ~scopes default_arg)
         in
         let body =
-          Matching.for_let ~scopes loc supplied_or_default pat body
+          Matching.for_optional_arg_default ~scopes loc pat body ~default_arg
         in
         (* The optional param is Pgenval as it's an option. *)
         body, (option_param, Pgenval) :: params)
@@ -815,7 +889,8 @@ and transl_function ~scopes e params body =
   let ((kind, params, return), body) =
     event_function ~scopes e
       (function repr ->
-         transl_tupled_function ~scopes e.exp_loc repr params body)
+         let body, params = push_params body params in
+         transl_curried_function ~scopes e.exp_loc repr params body)
   in
   let attr = default_function_attribute in
   let loc = of_location ~scopes e.exp_loc in
