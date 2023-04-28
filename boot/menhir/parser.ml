@@ -832,14 +832,14 @@ let mkghost_newtype_function_body newtypes body_constraint body =
   in
   expr.pexp_desc
 
-let mkarityfun params body_constraint body =
+let mkfunction params body_constraint body =
   match body with
-  | Pfunction_cases _ -> Pexp_arityfun (params, body_constraint, body)
+  | Pfunction_cases _ -> Pexp_function (params, body_constraint, body)
   | Pfunction_body body_exp ->
     (* If all the params are newtypes, then we don't create a function node;
        we create a newtype node. *)
       match all_params_as_newtypes params with
-      | None -> Pexp_arityfun (params, body_constraint, body)
+      | None -> Pexp_function (params, body_constraint, body)
       | Some newtypes ->
           mkghost_newtype_function_body newtypes body_constraint body_exp
 
@@ -8015,7 +8015,7 @@ module Tables = struct
           (* function%foo extension nodes interrupt the arity *)
             let cases = Pfunction_cases (_3, make_loc _sloc, []) in
             Pfunction_body
-              (mkexp_attrs ~loc:_sloc (mkarityfun [] None cases) _2)
+              (mkexp_attrs ~loc:_sloc (mkfunction [] None cases) _2)
       )
 # 8021 "parsing/parser.ml"
          in
@@ -8616,7 +8616,7 @@ module Tables = struct
           
 # 2427 "parsing/parser.mly"
       ( let body_constraint = Option.map (fun x -> Pconstraint x) _4 in
-        mkarityfun _3 body_constraint _6, _2
+        mkfunction _3 body_constraint _6, _2
       )
 # 8622 "parsing/parser.ml"
           
@@ -9198,7 +9198,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 9205 "parsing/parser.ml"
@@ -9405,7 +9405,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 9412 "parsing/parser.ml"
@@ -9607,7 +9607,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 9614 "parsing/parser.ml"
@@ -9665,7 +9665,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 9672 "parsing/parser.ml"
@@ -9933,7 +9933,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 9940 "parsing/parser.ml"
@@ -11018,7 +11018,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 11025 "parsing/parser.ml"
@@ -11262,7 +11262,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 11269 "parsing/parser.ml"
@@ -11506,7 +11506,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 11513 "parsing/parser.ml"
@@ -11750,7 +11750,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 11757 "parsing/parser.ml"
@@ -11994,7 +11994,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 12001 "parsing/parser.ml"
@@ -12231,7 +12231,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 12238 "parsing/parser.ml"
@@ -12467,7 +12467,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 12474 "parsing/parser.ml"
@@ -12703,7 +12703,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 12710 "parsing/parser.ml"
@@ -12939,7 +12939,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 12946 "parsing/parser.ml"
@@ -13175,7 +13175,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 13182 "parsing/parser.ml"
@@ -13411,7 +13411,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 13418 "parsing/parser.ml"
@@ -13647,7 +13647,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 13654 "parsing/parser.ml"
@@ -13883,7 +13883,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 13890 "parsing/parser.ml"
@@ -14119,7 +14119,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 14126 "parsing/parser.ml"
@@ -14355,7 +14355,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 14362 "parsing/parser.ml"
@@ -14591,7 +14591,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 14598 "parsing/parser.ml"
@@ -14827,7 +14827,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 14834 "parsing/parser.ml"
@@ -15063,7 +15063,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 15070 "parsing/parser.ml"
@@ -15299,7 +15299,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 15306 "parsing/parser.ml"
@@ -15535,7 +15535,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 15542 "parsing/parser.ml"
@@ -15743,7 +15743,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 15750 "parsing/parser.ml"
@@ -15937,7 +15937,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 15944 "parsing/parser.ml"
@@ -16239,7 +16239,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 16246 "parsing/parser.ml"
@@ -16441,7 +16441,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 16448 "parsing/parser.ml"
@@ -16673,7 +16673,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 16680 "parsing/parser.ml"
@@ -16934,7 +16934,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 16941 "parsing/parser.ml"
@@ -17196,7 +17196,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 17203 "parsing/parser.ml"
@@ -17458,7 +17458,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 17465 "parsing/parser.ml"
@@ -17745,7 +17745,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 17752 "parsing/parser.ml"
@@ -18087,7 +18087,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 18094 "parsing/parser.ml"
@@ -18399,7 +18399,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 18406 "parsing/parser.ml"
@@ -18741,7 +18741,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 18748 "parsing/parser.ml"
@@ -19053,7 +19053,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 19060 "parsing/parser.ml"
@@ -19395,7 +19395,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 19402 "parsing/parser.ml"
@@ -33210,7 +33210,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 33217 "parsing/parser.ml"
@@ -33904,7 +33904,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 33911 "parsing/parser.ml"
@@ -34198,7 +34198,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 34205 "parsing/parser.ml"
@@ -34550,7 +34550,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 34557 "parsing/parser.ml"
@@ -34848,7 +34848,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 34855 "parsing/parser.ml"
@@ -35091,7 +35091,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 35098 "parsing/parser.ml"
@@ -35323,7 +35323,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 35330 "parsing/parser.ml"
@@ -35541,7 +35541,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 35548 "parsing/parser.ml"
@@ -40130,7 +40130,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40137 "parsing/parser.ml"
@@ -40312,7 +40312,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40319 "parsing/parser.ml"
@@ -40454,7 +40454,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40461 "parsing/parser.ml"
@@ -40593,7 +40593,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40600 "parsing/parser.ml"
@@ -40650,7 +40650,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40657 "parsing/parser.ml"
@@ -40980,7 +40980,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 40987 "parsing/parser.ml"
@@ -41095,7 +41095,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 41102 "parsing/parser.ml"
@@ -41264,7 +41264,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 41271 "parsing/parser.ml"
@@ -41969,7 +41969,7 @@ module Tables = struct
 # 2278 "parsing/parser.mly"
       ( let loc = make_loc _sloc in
         let cases = _3 in
-        let desc = mkarityfun [] None (Pfunction_cases (cases, loc, [])) in
+        let desc = mkfunction [] None (Pfunction_cases (cases, loc, [])) in
         mkexp_attrs ~loc:_sloc desc _2
       )
 # 41976 "parsing/parser.ml"
@@ -52527,7 +52527,7 @@ module Tables = struct
         let _sloc = (_symbolstartpos, _endpos) in
         
 # 2719 "parsing/parser.mly"
-      ( ghexp ~loc:_sloc (mkarityfun _1 _2 _4)
+      ( ghexp ~loc:_sloc (mkfunction _1 _2 _4)
       )
 # 52533 "parsing/parser.ml"
          in
