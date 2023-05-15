@@ -2582,7 +2582,7 @@ let rec type_approx env sexp =
   match sexp.pexp_desc with
     Pexp_let (_, _, e) -> type_approx env e
   | Pexp_function (params, c, body) ->
-      type_approx_arityfun env params c body ~loc
+      type_approx_function env params c body ~loc
   | Pexp_match (_, {pc_rhs=e}::_) -> type_approx env e
   | Pexp_try (e, _) -> type_approx env e
   | Pexp_tuple l -> newty (Ttuple(List.map (type_approx env) l))
@@ -2596,13 +2596,13 @@ let rec type_approx env sexp =
       type_approx_constraint env ty (Pcoerce (sty1, sty2)) ~loc
   | _ -> newvar ()
 
-and type_approx_arityfun env params c body ~loc =
+and type_approx_function env params c body ~loc =
   (* We can approximate types up to the first newtype parameter, whereupon
      we give up.
   *)
   match params with
   | Pparam_val (label, _, _) :: params ->
-      type_approx_fun label (type_approx_arityfun env params c body ~loc)
+      type_approx_fun label (type_approx_function env params c body ~loc)
   | Pparam_newtype _ :: _ ->
       newvar ()
   | [] ->

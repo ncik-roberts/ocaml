@@ -626,7 +626,7 @@ and type_constraint ctxt f constraint_ =
         (option ~first:":@;" (core_type ctxt)) ty1
         (core_type ctxt) ty2
 
-and pp_pexp_arity_fun ctxt f params constraint_ body ~delimiter =
+and function_params_then_body ctxt f params constraint_ body ~delimiter =
   pp f "%a%a%s@;%a"
     (list (function_param ctxt) ~sep:"") params
     (option (type_constraint ctxt)) constraint_
@@ -661,7 +661,8 @@ and expression ctxt f x =
               (type_constraint ctxt) c
         | _ :: _, _ ->
           pp f "@[<2>fun@;%a@]"
-            (fun f () -> pp_pexp_arity_fun ctxt f params c body ~delimiter:"->")
+            (fun f () ->
+               function_params_then_body ctxt f params c body ~delimiter:"->")
             ();
 
         end
@@ -1288,7 +1289,7 @@ and binding ctxt f {pvb_pat=p; pvb_expr=x; pvb_constraint = ct; _} =
     if x.pexp_attributes <> [] then pp f "=@;%a" (expression ctxt) x
     else match x.pexp_desc with
       | Pexp_function (params, c, body) ->
-          pp_pexp_arity_fun ctxt f params c body ~delimiter:"="
+          function_params_then_body ctxt f params c body ~delimiter:"="
       | Pexp_newtype (str,e) ->
           pp f "(type@ %s)@ %a" str.txt pp_print_pexp_function e
       | _ -> pp f "=@;%a" (expression ctxt) x
