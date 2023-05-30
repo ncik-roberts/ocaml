@@ -308,6 +308,9 @@ and expression_desc =
       [C] represents a type constraint or coercion placed immediately
       before the arrow, e.g. [fun P1 ... Pn : t1 :> t2 -> ...]
       when [C = Some (Pcoerce (Some t1, t2))].
+
+      A function must have parameters. [Pexp_function (params, _, body)] must
+      have non-empty [params] or a [Pfunction_cases _] body.
   *)
   | Pexp_apply of expression * (arg_label * expression) list
       (** [Pexp_apply(E0, [(l1, E1) ; ... ; (ln, En)])]
@@ -460,6 +463,11 @@ and function_param =
 and function_body =
   | Pfunction_body of expression
   | Pfunction_cases of case list * Location.t * attributes
+  (** In [Pfunction_cases (_, loc, attrs)], the location extends from the
+      start of the [function] keyword to the end of the last case. The compiler
+      will only use typechecking-related attributes from [attrs], e.g. enabling
+      or disabling a warning.
+  *)
 (** See the comment on {{!expression_desc.Pexp_function}[Pexp_function]}. *)
 
 and type_constraint =

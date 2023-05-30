@@ -3048,20 +3048,18 @@ let vb_pat_constraint ({pvb_pat=pat; pvb_expr = exp; _ } as vb) =
     out of typing so that typing an expression body can return an expression
     and typing a function cases body can return the cases.
 *)
-module Constraint_arg = struct
-  type 'ret t =
-    { type_without_constraint: Env.t -> 'ret * type_expr;
-      (** [type_without_constraint] types a body (e :> t) where there is no
-          constraint.
-      *)
-      type_with_constraint: Env.t -> type_expr -> 'ret;
-      (** [type_with_constraint] types a body (e : t) or (e : t :> t') in
-          the presence of a constraint.
-      *)
-      is_self: 'ret -> bool;
-      (** Whether the thing being constrained is a [Val_self] ident. *)
-    }
-end
+type 'ret constraint_arg =
+  { type_without_constraint: Env.t -> 'ret * type_expr;
+    (** [type_without_constraint] types a body (e :> t) where there is no
+        constraint.
+    *)
+    type_with_constraint: Env.t -> type_expr -> 'ret;
+    (** [type_with_constraint] types a body (e : t) or (e : t :> t') in
+        the presence of a constraint.
+    *)
+    is_self: 'ret -> bool;
+    (** Whether the thing being constrained is a [Val_self] ident. *)
+  }
 
 let rec type_exp ?recarg env sexp =
   (* We now delegate everything to type_expect *)
@@ -4103,7 +4101,7 @@ and type_expect_
            exp_attributes = sexp.pexp_attributes;
            exp_env = env }
 
-and expression_constraint pexp : _ Constraint_arg.t =
+and expression_constraint pexp =
   { type_without_constraint = (fun env ->
       let expr = type_exp env pexp in
       expr, expr.exp_type);
@@ -4117,18 +4115,19 @@ and expression_constraint pexp : _ Constraint_arg.t =
   }
 
 (** Types a body in the scope of a coercion (with an optional constraint)
-    and returns the inferred type. See the comment on {!Constraint_arg} for
+    and returns the inferred type. See the comment on {!constraint_arg} for
     an explanation of how this typechecking is polymorphic in the body.
 *)
 and type_coerce
-  : type a. a Constraint_arg.t -> _ -> _ -> _ -> _ -> loc_arg:_
+  : type a. a constraint_arg -> _ -> _ -> _ -> _ -> loc_arg:_
          -> a * type_expr * exp_extra =
   fun constraint_arg env loc sty sty' ~loc_arg ->
   (* Pretend separate = true, 1% slowdown for lablgtk *)
   (* Also see PR#7199 for a problem with the following:
       let separate = !Clflags.principal || Env.has_local_constraints env in*)
-  let { Constraint_arg.is_self; type_with_constraint; type_without_constraint }
-    = constraint_arg in
+  let { is_self; type_with_constraint; type_without_constraint } =
+    constraint_arg
+  in
   match sty with
   | None ->
     let (cty', ty', force) =
@@ -4216,7 +4215,7 @@ and type_constraint env sty =
     @param loc_arg the location of the thing being constrained
 *)
 and type_constraint_expect
-  : type a. a Constraint_arg.t -> _ -> _ -> loc_arg:_ -> _ -> _ -> a * _ * _ =
+  : type a. a constraint_arg -> _ -> _ -> loc_arg:_ -> _ -> _ -> a * _ * _ =
   fun constraint_arg env loc ~loc_arg constraint_ ty_expected ->
   let ret, ty, exp_extra =
     match constraint_ with
@@ -4314,12 +4313,12 @@ and type_binding_op_ident env s =
    It's used to generate better error messages. ([in_function] has
    some information about this node, again for error messages.)
 *)
-and split_function_ty env ty ~arg_label ~first ~in_function =
+and split_function_ty env ty_expected ~arg_label ~first ~in_function =
   let { ty = ty_fun; explanation }, loc = in_function in
   let separate = !Clflags.principal || Env.has_local_constraints env in
   with_local_level_iter_if separate ~post:generalize_structure begin fun () ->
     let ty_arg, ty_res =
-      try filter_arrow env (instance ty) arg_label
+      try filter_arrow env (instance ty_expected) arg_label
       with Filter_arrow_failed err ->
         let err = match err with
         | Unification_error unif_err ->
@@ -4508,7 +4507,7 @@ and type_function
                   - [type_without_constraint]: If there is just a coercion and
                     no constraint, call [type_exp] on the cases and surface the
                     cases' inferred type to [type_constraint_expect]. *)
-              let function_cases_constraint_arg : _ Constraint_arg.t =
+              let function_cases_constraint_arg =
                 { is_self = (fun _ -> false);
                   type_with_constraint = (fun env ty ->
                     let cases, partial, ty_out = type_cases_expect env ty in
