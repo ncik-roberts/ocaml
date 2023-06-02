@@ -778,13 +778,13 @@ let rec expression : Typedtree.expression -> term_judg =
       (*
          Function_cases:
 
-         (Gi; _ |- pi -> ei : m[Delay])^i
+         (Gi; _ |- pi -> ei : m[Delay])^i    (**)
          (Hj    |-{def}  Pj : m[Delay])^j
          G  := sum(Gi)^i
          H  := sum(Hj)^j
          ps := sum(pat(Pj))^j
          ---------------------------------------------------------
-         sum(G, H) - ps |- fun (Pj)^j -> function (pi -> ei)^i : m
+         G + H - ps |- fun (Pj)^j -> function (pi -> ei)^i : m
 
          Function_body:
 
@@ -793,11 +793,11 @@ let rec expression : Typedtree.expression -> term_judg =
          H  := sum(Hj)^j
          ps := sum(pat(Pj))^j
          -------------------------------------
-         sum(G, H) - ps |- fun (Pj)^j -> e : m
+         G + H - ps |- fun (Pj)^j -> e : m
 
-         Contrarily to match, the values that are pattern-matched
-         are bound locally, so the pattern modes do not influence
-         the final environment.
+         (**) Contrarily to match, the values that are pattern-matched
+              are bound locally, so the pattern modes do not influence
+              the final environment.
       *)
       let param_pat param =
         (* param P ::=
