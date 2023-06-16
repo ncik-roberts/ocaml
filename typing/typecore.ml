@@ -903,28 +903,6 @@ let build_or_pat env loc lid =
           pat pats in
       (path, rp { r with pat_loc = loc })
 
-(* Used to split patterns into value cases and exception cases. *)
-let split_cases
-      (type c ret)
-      env
-      (cases : c list)
-      ~(case_to_pattern : c -> computation general_pattern)
-      ~(case_has_guard : c -> bool)
-      (f : c -> pattern -> ret)
-  : ret list * ret list =
-  let add_case lst case = function
-    | None -> lst
-    | Some pat -> f case pat :: lst
-  in
-  List.fold_right (fun case (vals, exns) ->
-    let pat = case_to_pattern case in
-    match split_pattern pat with
-    | Some _, Some _ when case_has_guard case ->
-      raise (Error (pat.pat_loc, env,
-                    Mixed_value_and_exception_patterns_under_guard))
-    | vp, ep -> add_case vals case vp, add_case exns case ep
-  ) cases ([], [])
-
 (* Type paths *)
 
 let rec expand_path env p =
@@ -1394,6 +1372,22 @@ type ('case_pattern, 'case_data) half_typed_case =
     pat_vars: pattern_variable list;
     module_vars: module_variable list;
     contains_gadt: bool; }
+
+(* Used to split patterns into value cases and exception cases. *)
+let split_half_typed_cases env zipped_cases =
+  let add_case lst htc data = function
+    | None -> lst
+    | Some split_pat ->
+        ({ htc.untyped_case with pattern = split_pat }, data) :: lst
+  in
+  List.fold_right (fun (htc, data) (vals, exns) ->
+      let pat = htc.typed_pat in
+      match split_pattern pat with
+      | Some _, Some _ when htc.untyped_case.has_guard ->
+          raise (Error (pat.pat_loc, env,
+                        Mixed_value_and_exception_patterns_under_guard))
+      | vp, ep -> add_case vals htc data vp, add_case exns htc data ep
+    ) zipped_cases ([], [])
 
 let rec has_literal_pattern p = match p.ppat_desc with
   | Ppat_constant _
@@ -5351,7 +5345,7 @@ and type_statement ?explanation env sexp =
 
 (* Most of the arguments are the same as [type_cases].
 
-   Takes a callback which is responsible for checking the body of the case.
+   Takes a callback which is responsible for typing the body of the case.
    The arguments are documented inline in the type signature.
 
    It takes a callback rather than returning the half-typed cases directly
@@ -5363,7 +5357,8 @@ and type_statement ?explanation env sexp =
 *)
 and map_half_typed_cases
   : type k ret case_data.
-    k pattern_category -> _ -> _ -> _ -> _
+    ?additional_checks_for_split_cases:((_ * ret) list -> unit)
+    -> k pattern_category -> _ -> _ -> _ -> _
     -> (untyped_case * case_data) list
     -> type_body:(
         case_data
@@ -5375,7 +5370,8 @@ and map_half_typed_cases
         -> ret)
     -> partial_flag:bool
     -> ret list * partial
-  = fun category env ty_arg ty_res loc caselist ~type_body ~partial_flag ->
+  = fun ?additional_checks_for_split_cases
+    category env ty_arg ty_res loc caselist ~type_body ~partial_flag ->
   (* ty_arg is _fully_ generalized *)
   let patterns = List.map (fun ((x : untyped_case), _) -> x.pattern) caselist in
   let contains_polyvars = List.exists contains_polymorphic_variant patterns in
@@ -5537,21 +5533,32 @@ and map_half_typed_cases
       Subst.type_expr (Subst.for_saving Subst.identity) ty_arg'
     else ty_arg'
   in
-  let val_cases, exn_cases =
+  (* Split the cases into val and exn cases so we can do the appropriate checks
+     for exhaustivity and unused variables.
+
+     The caller of this function can define custom checks. For some of these
+     checks, the half-typed case doesn't provide enough info on its own -- for
+     instance, the check for ambiguous bindings in when guards needs to know the
+     case body's expression -- so the code pairs each case with its
+     corresponding element in [result] before handing it off to the caller's
+     custom checks.
+  *)
+  let val_cases_with_result, exn_cases_with_result =
     match category with
     | Value ->
         let val_cases =
-          List.map
-            (fun htc -> { htc.untyped_case with pattern = htc.typed_pat })
+          List.map2
+            (fun htc res ->
+               { htc.untyped_case with pattern = htc.typed_pat }, res)
             half_typed_cases
+            result
         in
-        (val_cases : pattern Parmatch.parmatch_case list), []
+        (val_cases : (pattern Parmatch.parmatch_case * ret) list), []
     | Computation ->
-        split_cases env half_typed_cases
-          ~case_to_pattern:(fun htc -> htc.typed_pat)
-          ~case_has_guard:(fun htc -> htc.untyped_case.has_guard)
-          (fun htc split_pat -> { htc.untyped_case with pattern = split_pat })
+        split_half_typed_cases env (List.combine half_typed_cases result)
   in
+  let val_cases = List.map fst val_cases_with_result in
+  let exn_cases = List.map fst exn_cases_with_result in
   if val_cases = [] && exn_cases <> [] then
     raise (Error (loc, env, No_value_clauses));
   let partial =
@@ -5574,6 +5581,13 @@ and map_half_typed_cases
   else
     (* Check for unused cases, do not delay because of gadts *)
     unused_check false;
+  begin
+    match additional_checks_for_split_cases with
+    | None -> ()
+    | Some check ->
+        check val_cases_with_result;
+        check exn_cases_with_result;
+  end;
   (result, partial), [ty_res']
   end
   (* Ensure that existential types do not escape *)
@@ -5594,41 +5608,34 @@ and type_cases
      is to typecheck the guards and the cases, and then to check for some
      warnings that can fire in the presence of guards.
   *)
-  let cases, partial =
-    map_half_typed_cases category env ty_arg ty_res loc caselist ~partial_flag
-      ~type_body:begin
-        fun { pc_guard; pc_rhs } pat ~ext_env ~ty_expected ~ty_infer
-            ~contains_gadt:_ ->
-          let guard =
-            match pc_guard with
-            | None -> None
-            | Some scond ->
-              Some
-                (type_expect ext_env scond
-                  (mk_expected ~explanation:When_guard Predef.type_bool))
-          in
-          let exp =
-            type_expect ext_env pc_rhs (mk_expected ?explanation ty_expected)
-          in
-          {
-            c_lhs = pat;
-            c_guard = guard;
-            c_rhs = {exp with exp_type = ty_infer}
-          }
-      end
-  in
-  let val_cases, exn_cases =
-    match category with
-    | Value -> (cases : value case list), []
-    | Computation ->
-        split_cases env cases
-          ~case_to_pattern:(fun { c_lhs } -> c_lhs)
-          ~case_has_guard:(fun { c_guard } -> Option.is_some c_guard)
-          (fun case pattern -> { case with c_lhs = pattern })
-  in
-  Parmatch.check_ambiguous_bindings val_cases;
-  Parmatch.check_ambiguous_bindings exn_cases;
-  cases, partial
+  map_half_typed_cases category env ty_arg ty_res loc caselist ~partial_flag
+    ~type_body:begin
+      fun { pc_guard; pc_rhs } pat ~ext_env ~ty_expected ~ty_infer
+          ~contains_gadt:_ ->
+        let guard =
+          match pc_guard with
+          | None -> None
+          | Some scond ->
+            Some
+              (type_expect ext_env scond
+                (mk_expected ~explanation:When_guard Predef.type_bool))
+        in
+        let exp =
+          type_expect ext_env pc_rhs (mk_expected ?explanation ty_expected)
+        in
+        {
+          c_lhs = pat;
+          c_guard = guard;
+          c_rhs = {exp with exp_type = ty_infer}
+        }
+    end
+    ~additional_checks_for_split_cases:(fun cases ->
+      let cases =
+        List.map
+          (fun (case_with_pat, case) ->
+             { case with c_lhs = case_with_pat.Parmatch.pattern }) cases
+      in
+      Parmatch.check_ambiguous_bindings cases)
 
 
 (** A version of [type_expect], but that operates over function cases instead
