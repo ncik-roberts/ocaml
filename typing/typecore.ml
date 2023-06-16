@@ -4460,6 +4460,10 @@ and type_function
       let exp_type =
         instance (newgenty (Tarrow (arg_label, ty_arg, ty_res, commu_ok)))
       in
+      (* This is quadratic, as it operates over the entire tail of the
+         type for each new parameter. Now that functions are n-ary, we
+         could possibly run this once.
+      *)
       with_explanation ty_fun.explanation (fun () ->
         unify_exp_types loc env exp_type (instance ty_expected));
       (* This is quadratic, as it extracts all of the parameters from an arrow
