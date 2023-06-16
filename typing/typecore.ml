@@ -4318,11 +4318,14 @@ and type_binding_op_ident env s =
   in
   path, desc
 
-(* Returns the argument type and then the return type.
+(** Returns the argument type and then the return type.
 
-   [first] is whether the function type is for the [Texp_function] node.
-   It's used to generate better error messages. ([in_function] has
-   some information about this node, again for error messages.)
+    @param first Whether the parameter corresponding to the argument of
+      [ty_expected] is the first parameter to the (n-ary) function. This only
+      affects error messages.
+    @param in_function Information about the [Pexp_function] node that's in the
+      process of being typechecked (its overall type and its location). Again,
+      this is only used to improve error messages.
 *)
 and split_function_ty env ty_expected ~arg_label ~first ~in_function =
   let { ty = ty_fun; explanation }, loc = in_function in
@@ -4364,6 +4367,8 @@ and split_function_ty env ty_expected ~arg_label ~first ~in_function =
    Operates like [type_expect] in that it unifies the "type of the remaining
    function params + body" with [ty_expected], and returns out the inferred
    type.
+
+   See [split_function_ty] for the meaning of [first] and [in_function].
 
    Returns (inferred_ty, params, body, newtypes, contains_gadt), where:
      - [newtypes] are the newtypes immediately bound by the prefix of function
@@ -4463,6 +4468,10 @@ and type_function
       in
       with_explanation ty_fun.explanation (fun () ->
         unify_exp_types loc env exp_type (instance ty_expected));
+      (* This is quadratic, as it extracts all of the parameters from an arrow
+         type for each parameter that's added. Now that functions are n-ary,
+         there might be an opportunity to improve this.
+      *)
       let not_nolabel_function ty =
         let ls, tvar = list_labels env ty in
         List.for_all (( <> ) Nolabel) ls && not tvar
@@ -4532,8 +4541,7 @@ and type_function
               let function_cases_constraint_arg =
                 { is_self = (fun _ -> false);
                   type_with_constraint = (fun env ty ->
-                    let cases, partial, ty_out = type_cases_expect env ty in
-                    enforce_current_level env ty_out;
+                    let cases, partial, _ = type_cases_expect env ty in
                     cases, partial);
                   type_without_constraint = (fun env ->
                     let cases, partial, ty_fun =
@@ -5628,8 +5636,8 @@ and type_cases
     [type_expect], and the returned type is like the [exp_type] of the
     expression returned by [type_expect].
 
-    @param first Whether the parameter bound by the function cases is the first
-    parameter to the (n-ary) function. This only affects error messages. *)
+    See [split_function_ty] for the meaning of [first] and [in_function].
+*)
 and type_function_cases_expect
       env ty_expected loc cases attrs ~first ~in_function =
   Builtin_attributes.warning_scope attrs begin fun () ->
