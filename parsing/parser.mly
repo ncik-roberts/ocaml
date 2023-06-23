@@ -636,6 +636,15 @@ let mkfunction params body_constraint body =
       | Some newtypes ->
           mkghost_newtype_function_body newtypes body_constraint body_exp
 
+(* Explode a val param into the triple (arg label, optional default, pattern).
+   This is for backward compatibility with some AST forms that still use the
+   triple instead of the new form.
+*)
+let explode_fun_val_param = function
+  | Param_nolabel pat -> Nolabel, None, pat
+  | Param_labelled (lab, pat) -> Labelled lab, None, pat
+  | Param_optional (lab, pat, def) -> Optional lab, def, pat
+
 (* Alternatively, we could keep the generic module type in the Parsetree
    and extract the package type during type-checking. In that case,
    the assertions below should be turned into explicit checks. *)
@@ -1946,7 +1955,7 @@ class_fun_binding:
       COLON class_type EQUAL class_expr
         { Pcl_constraint($4, $2) }
     | labeled_simple_pattern class_fun_binding
-      { let (l,o,p) = $1 in Pcl_fun(l, o, p, $2) }
+      { let (l,o,p) = explode_fun_val_param $1 in Pcl_fun(l, o, p, $2) }
     ) { $1 }
 ;
 
@@ -2002,7 +2011,7 @@ class_fun_def:
   mkclass(
     labeled_simple_pattern MINUSGREATER e = class_expr
   | labeled_simple_pattern e = class_fun_def
-      { let (l,o,p) = $1 in Pcl_fun(l, o, p, e) }
+      { let (l,o,p) = explode_fun_val_param $1 in Pcl_fun(l, o, p, e) }
   ) { $1 }
 ;
 %inline class_structure:
@@ -2315,21 +2324,21 @@ seq_expr:
 ;
 labeled_simple_pattern:
     QUESTION LPAREN label_let_pattern opt_default RPAREN
-      { (Optional (fst $3), $4, snd $3) }
+      { Param_optional (fst $3, snd $3, $4) }
   | QUESTION label_var
-      { (Optional (fst $2), None, snd $2) }
+      { Param_optional (fst $2, snd $2, None) }
   | OPTLABEL LPAREN let_pattern opt_default RPAREN
-      { (Optional $1, $4, $3) }
+      { Param_optional ($1, $3, $4) }
   | OPTLABEL pattern_var
-      { (Optional $1, None, $2) }
+      { Param_optional ($1, $2, None) }
   | TILDE LPAREN label_let_pattern RPAREN
-      { (Labelled (fst $3), None, snd $3) }
+      { Param_labelled (fst $3, snd $3) }
   | TILDE label_var
-      { (Labelled (fst $2), None, snd $2) }
+      { Param_labelled (fst $2, snd $2) }
   | LABEL simple_pattern
-      { (Labelled $1, None, $2) }
+      { Param_labelled ($1, $2) }
   | simple_pattern
-      { (Nolabel, None, $1) }
+      { Param_nolabel $1 }
 ;
 
 pattern_var:
@@ -2766,8 +2775,7 @@ fun_param_as_list:
         List.map (fun x -> Pparam_newtype (x, loc)) ty_params
       }
   | labeled_simple_pattern
-      { let a, b, c = $1 in
-        [ Pparam_val (a, b, c) ] }
+      { [ Pparam_val $1 ] }
 ;
 fun_params:
   | nonempty_concat(fun_param_as_list) { $1 }

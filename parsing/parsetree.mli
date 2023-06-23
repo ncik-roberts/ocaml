@@ -432,25 +432,19 @@ and binding_op =
     pbop_loc : Location.t;
   }
 
-and function_param =
-  | Pparam_val of arg_label * expression option * pattern
-  (** [Pparam_val (lbl, exp0, P)] represents the parameter:
-      - [P]
-        when [lbl] is {{!Asttypes.arg_label.Nolabel}[Nolabel]}
-        and [exp0] is [None]
-      - [~l:P]
-        when [lbl] is {{!Asttypes.arg_label.Labelled}[Labelled l]}
-        and [exp0] is [None]
-      - [?l:P]
-        when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
-        and [exp0] is [None]
-      - [?l:(P = E0)]
-        when [lbl] is {{!Asttypes.arg_label.Optional}[Optional l]}
-        and [exp0] is [Some E0]
-
-      Note: If [E0] is provided, only
-      {{!Asttypes.arg_label.Optional}[Optional]} is allowed.
+and function_val_param =
+  | Param_nolabel of pattern
+  (** [Pparam_nolabel P] is the parameter [P] *)
+  | Param_labelled of label * pattern
+  (** [Pparam_labelled (l, P)] is the parameter [~l:P] *)
+  | Param_optional of label * pattern * expression option
+  (** [Pparam_optional (l, P, None)] is the parameter [?l:P]
+      [Pparam_optional (l, P, Some E)] is the parameter [?l:(P = E)]
   *)
+
+and function_param =
+  | Pparam_val of function_val_param
+  (** Value parameter *)
   | Pparam_newtype of string loc * Location.t
   (** [Pparam_newtype (x, loc)] represents the parameter [(type x)].
       [x] carries the location of the identifier, whereas [loc] is

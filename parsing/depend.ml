@@ -273,7 +273,11 @@ let rec add_expr bv exp =
 
 and add_function_param bv param =
   match param with
-  | Pparam_val (_, opte, pat) ->
+  | Pparam_val (Param_nolabel pat) ->
+      add_pattern bv pat
+  | Pparam_val (Param_labelled (_, pat)) ->
+      add_pattern bv pat
+  | Pparam_val (Param_optional (_, pat, opte)) ->
       add_opt add_expr bv opte;
       add_pattern bv pat
   | Pparam_newtype _ -> bv

@@ -350,9 +350,13 @@ module E = struct
 
   let iter_function_param sub param =
     match param with
-    | Pparam_val (_lab, def, p) ->
-        iter_opt (sub.expr sub) def;
+    | Pparam_val (Param_nolabel p) ->
         sub.pat sub p
+    | Pparam_val (Param_labelled (_, p)) ->
+        sub.pat sub p
+    | Pparam_val (Param_optional (_, p, def)) ->
+        sub.pat sub p;
+        iter_opt (sub.expr sub) def
     | Pparam_newtype (ty, loc) ->
         iter_loc sub ty;
         sub.location sub loc

@@ -387,13 +387,16 @@ end
 module E = struct
   (* Value expressions for the core language *)
 
+  let map_function_val_param sub val_param =
+    match val_param with
+    | Param_nolabel p -> Param_nolabel (sub.pat sub p)
+    | Param_labelled (lab, p) -> Param_labelled (lab, sub.pat sub p)
+    | Param_optional (lab, p, def) ->
+        Param_optional (lab, sub.pat sub p, map_opt (sub.expr sub) def)
+
   let map_function_param sub param =
     match param with
-    | Pparam_val (lab, def, p) ->
-        Pparam_val
-          (lab,
-           map_opt (sub.expr sub) def,
-           sub.pat sub p)
+    | Pparam_val x -> Pparam_val (map_function_val_param sub x)
     | Pparam_newtype (ty, loc) ->
         Pparam_newtype (map_loc sub ty, sub.location sub loc)
 

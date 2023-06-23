@@ -505,12 +505,12 @@ and simple_pattern ctxt (f:Format.formatter) (x:pattern) : unit =
           (paren with_paren @@ pattern1 ctxt) p
     | _ -> paren true (pattern ctxt) f x
 
-and label_exp ctxt f (l,opt,p) =
-  match l with
-  | Nolabel ->
+and function_val_param ctxt f val_param =
+  match val_param with
+  | Param_nolabel p ->
       (* single case pattern parens needed here *)
       pp f "%a@ " (simple_pattern ctxt) p
-  | Optional rest ->
+  | Param_optional (rest, p, opt) ->
       begin match p with
       | {ppat_desc = Ppat_var {txt;_}; ppat_attributes = []}
         when txt = rest ->
@@ -524,11 +524,17 @@ and label_exp ctxt f (l,opt,p) =
                  rest (pattern1 ctxt) p (expression ctxt) o
            | None -> pp f "?%s:%a@;" rest (simple_pattern ctxt) p)
       end
-  | Labelled l -> match p with
+  | Param_labelled (l, p) -> match p with
     | {ppat_desc  = Ppat_var {txt;_}; ppat_attributes = []}
       when txt = l ->
         pp f "~%s@;" l
     | _ ->  pp f "~%s:%a@;" l (simple_pattern ctxt) p
+
+and label_exp ctxt f (lbl, def, pat) =
+  match lbl with
+  | Nolabel -> function_val_param ctxt f (Param_nolabel pat)
+  | Optional lbl -> function_val_param ctxt f (Param_optional (lbl, pat, def))
+  | Labelled lbl -> function_val_param ctxt f (Param_labelled (lbl, pat))
 
 and sugar_expr ctxt f e =
   if e.pexp_attributes <> [] then false
@@ -608,7 +614,7 @@ and sugar_expr ctxt f e =
 
 and function_param ctxt f param =
   match param with
-  | Pparam_val (a, b, c) -> label_exp ctxt f (a, b, c)
+  | Pparam_val val_param -> function_val_param ctxt f val_param
   | Pparam_newtype (ty, _) -> pp f "(type %s)@;" ty.txt
 
 and function_body ctxt f function_body =

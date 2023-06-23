@@ -427,7 +427,13 @@ let expression sub exp =
                let newtypes =
                  List.map (fun x -> Pparam_newtype (x, x.loc)) fp.fp_newtypes
                in
-               Pparam_val (fp.fp_arg_label, default_arg, pat) :: newtypes)
+               let val_param =
+                 match fp.fp_arg_label with
+                 | Nolabel -> Param_nolabel pat
+                 | Labelled lbl -> Param_labelled (lbl, pat)
+                 | Optional lbl -> Param_optional (lbl, pat, default_arg)
+               in
+               Pparam_val val_param :: newtypes)
             params
         in
         Pexp_function (params, constraint_, body)

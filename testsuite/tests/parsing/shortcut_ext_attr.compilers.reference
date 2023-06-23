@@ -76,10 +76,9 @@
                               Pexp_function
                               [
                                 Pparam_val
-                                  Nolabel
-                                  None
-                                  pattern (shortcut_ext_attr.ml[14,294+17]..[14,294+18])
-                                    Ppat_var "x" (shortcut_ext_attr.ml[14,294+17]..[14,294+18])
+                                  Param_nolabel
+                                    pattern (shortcut_ext_attr.ml[14,294+17]..[14,294+18])
+                                      Ppat_var "x" (shortcut_ext_attr.ml[14,294+17]..[14,294+18])
                               ]
                               None
                               Pfunction_body

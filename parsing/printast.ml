@@ -379,13 +379,24 @@ and expression i ppf x =
   | Pexp_unreachable ->
       line i ppf "Pexp_unreachable"
 
+and function_val_param i ppf param =
+  match param with
+  | Param_nolabel p ->
+      line i ppf "Param_nolabel\n";
+      pattern (i+1) ppf p
+  | Param_labelled (l, p) ->
+      line i ppf "Param_labelled \"%s\"\n" l;
+      pattern (i+1) ppf p
+  | Param_optional (l, p, eo) ->
+      line i ppf "Param_optional \"%s\"\n" l;
+      pattern (i+1) ppf p;
+      option (i+1) expression ppf eo
+
 and function_param i ppf param =
   match param with
-  | Pparam_val (l, eo, p) ->
+  | Pparam_val param ->
       line i ppf "Pparam_val\n";
-      arg_label (i+1) ppf l;
-      option (i+1) expression ppf eo;
-      pattern (i+1) ppf p
+      function_val_param (i+1) ppf param
   | Pparam_newtype (ty, loc) ->
       line i ppf "Pparam_newtype \"%s\" %a\n" ty.txt fmt_location loc
 

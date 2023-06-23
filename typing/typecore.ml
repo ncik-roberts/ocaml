@@ -2129,6 +2129,16 @@ let set_state s env =
   Btype.backtrack s.snapshot;
   env := s.env
 
+let param_label = function
+  | Param_nolabel _ -> Nolabel
+  | Param_labelled (lbl, _) -> Labelled lbl
+  | Param_optional (lbl, _, _) -> Optional lbl
+
+let param_pat = function
+  | Param_nolabel pat
+  | Param_labelled (_, pat)
+  | Param_optional (_, pat, _) -> pat
+
 (** Find the first alternative in the tree of or-patterns for which
     [f] does not raise an error. If all fail, the last error is
     propagated *)
@@ -2599,8 +2609,9 @@ and type_approx_function env params c body ~loc =
      we give up.
   *)
   match params with
-  | Pparam_val (label, _, _) :: params ->
-      type_approx_fun label (type_approx_function env params c body ~loc)
+  | Pparam_val val_param :: params ->
+      type_approx_fun (param_label val_param)
+        (type_approx_function env params c body ~loc)
   | Pparam_newtype _ :: _ ->
       newvar ()
   | [] ->
@@ -4385,7 +4396,9 @@ and type_function
         let loc_start =
           match param with
           | Pparam_newtype (_, loc_param) -> loc_param.loc_start
-          | Pparam_val (_, _, pat) -> pat.ppat_loc.loc_start
+          | Pparam_val val_param ->
+              let pat = param_pat val_param in
+              pat.ppat_loc.loc_start
         in
         { loc_start; loc_end = loc_function.loc_end; loc_ghost = true }
     | [], Pfunction_body pexp -> pexp.pexp_loc
@@ -4408,7 +4421,9 @@ and type_function
       with_explanation ty_fun.explanation (fun () ->
         unify_exp_types loc env exp_type (instance ty_expected));
       exp_type, params, body, newtype :: newtypes, contains_gadt
-  | Pparam_val (arg_label, default_arg, pat) :: rest ->
+  | Pparam_val val_param :: rest ->
+      let arg_label = param_label val_param in
+      let pat = param_pat val_param in
       let ty_arg, ty_res =
         split_function_ty env ty_expected ~arg_label ~first ~in_function
       in
@@ -4418,9 +4433,10 @@ and type_function
          is optional and the internal view is not optional.
       *)
       let ty_arg_internal, default_arg =
-        match default_arg with
-        | None -> ty_arg, None
-        | Some default ->
+        match val_param with
+        | Param_nolabel _ | Param_labelled _ | Param_optional (_, _, None) ->
+            ty_arg, None
+        | Param_optional (_, _, Some default) ->
             assert (is_optional arg_label);
             let ty_default = newvar () in
             begin
